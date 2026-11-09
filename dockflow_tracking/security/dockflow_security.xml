@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="dockflow_shipment_company_rule" model="ir.rule">
+        <field name="name">Dockflow shipments multi-company</field>
+        <field name="model_id" ref="model_dockflow_shipment"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="dockflow_container_company_rule" model="ir.rule">
+        <field name="name">Dockflow containers multi-company</field>
+        <field name="model_id" ref="model_dockflow_container"/>
+        <field name="domain_force">[('shipment_id.company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="dockflow_event_company_rule" model="ir.rule">
+        <field name="name">Dockflow events multi-company</field>
+        <field name="model_id" ref="model_dockflow_event"/>
+        <field name="domain_force">[('shipment_id.company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

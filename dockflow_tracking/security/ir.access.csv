@@ -1,7 +1,0 @@
-id,name,model_id,group_id/id,operation,domain
-dockflow_shipment_purchase_user,Dockflow shipments,dockflow.shipment,purchase.group_purchase_user,crud,
-dockflow_container_purchase_user,Dockflow containers,dockflow.container,purchase.group_purchase_user,crud,
-dockflow_event_purchase_user,Dockflow events,dockflow.event,purchase.group_purchase_user,crud,
-dockflow_shipment_company,Dockflow shipments multi-company,dockflow.shipment,,crud,"[('company_id', 'in', company_ids)]"
-dockflow_container_company,Dockflow containers multi-company,dockflow.container,,crud,"[('shipment_id.company_id', 'in', company_ids)]"
-dockflow_event_company,Dockflow events multi-company,dockflow.event,,crud,"[('shipment_id.company_id', 'in', company_ids)]"
