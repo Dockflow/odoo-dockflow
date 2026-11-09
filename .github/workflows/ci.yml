@@ -29,7 +29,7 @@ jobs:
         run: |
           set -o pipefail
           SERIES=$(python3 -c "import ast;print('.'.join(ast.literal_eval(open('dockflow_tracking/__manifest__.py').read())['version'].split('.')[:2]))")
-          docker run --rm --network host -v "$PWD":/mnt/extra-addons "odoo:$SERIES" \
-            odoo --db_host=localhost --db_user=odoo --db_password=odoo -d ci \
+          docker run --rm --network host -e HOST=localhost -e USER=odoo -e PASSWORD=odoo \
+            -v "$PWD":/mnt/extra-addons "odoo:$SERIES" odoo -d ci \
             -i dockflow_tracking --test-tags /dockflow_tracking --stop-after-init 2>&1 | tee odoo.log
           grep -q "0 failed, 0 error(s)" odoo.log
