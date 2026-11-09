@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Library tests
+        run: |
+          pip install pytest requests
+          python -m pytest -q -p no:cacheprovider tools/tests
+
+      - name: Odoo tests
+        run: |
+          set -o pipefail
+          SERIES=$(python3 -c "import ast;print('.'.join(ast.literal_eval(open('dockflow_tracking/__manifest__.py').read())['version'].split('.')[:2]))")
+          docker run --rm --network host -v "$PWD":/mnt/extra-addons "odoo:$SERIES" \
+            odoo --db_host=localhost --db_user=odoo --db_password=odoo -d ci \
+            -i dockflow_tracking --test-tags /dockflow_tracking --stop-after-init 2>&1 | tee odoo.log
+          grep -q "0 failed, 0 error(s)" odoo.log
