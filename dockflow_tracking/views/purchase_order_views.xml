@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="purchase_order_form_dockflow" model="ir.ui.view">
+        <field name="name">purchase.order.form.inherit.dockflow</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button type="object" name="action_view_dockflow_shipments" class="oe_stat_button" icon="fa-ship" invisible="dockflow_shipment_count == 0">
+                    <field name="dockflow_shipment_count" widget="statinfo" string="Shipments"/>
+                </button>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Shipments" name="dockflow_shipments">
+                    <field name="dockflow_shipment_ids">
+                        <list editable="bottom">
+                            <field name="name" readonly="1"/>
+                            <field name="reference_type"/>
+                            <field name="reference"/>
+                            <field name="port_of_loading"/>
+                            <field name="port_of_discharge"/>
+                            <field name="eta"/>
+                            <field name="state" widget="badge" decoration-success="state == 'tracking'" decoration-danger="state == 'error'" decoration-muted="state == 'deactivated'"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="purchase_order_list_dockflow" model="ir.ui.view">
+        <field name="name">purchase.order.list.inherit.dockflow</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_view_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='date_planned']" position="after">
+                <field name="dockflow_eta" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

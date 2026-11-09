@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_dockflow_shipment_user,dockflow.shipment user,model_dockflow_shipment,purchase.group_purchase_user,1,1,1,1
+access_dockflow_container_user,dockflow.container user,model_dockflow_container,purchase.group_purchase_user,1,1,1,1
+access_dockflow_event_user,dockflow.event user,model_dockflow_event,purchase.group_purchase_user,1,1,1,1
