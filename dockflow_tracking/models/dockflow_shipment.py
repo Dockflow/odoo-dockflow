@@ -11,6 +11,8 @@ _logger = logging.getLogger(__name__)
 
 PARAM = "dockflow_tracking."
 ETA_SHIFT_TO_REPORT = timedelta(hours=24)
+# The token sees every tradeflow of the company, so Odoo's references must not collide with those of other systems.
+REFERENCE_PREFIX = "ODOO-"
 
 
 class DockflowShipment(models.Model):
@@ -59,9 +61,9 @@ class DockflowShipment(models.Model):
             order = shipment.purchase_order_id
             taken = set(order.dockflow_shipment_ids.mapped("name"))
             number = 1
-            while f"{order.name}-{number}" in taken:
+            while f"{REFERENCE_PREFIX}{order.name}-{number}" in taken:
                 number += 1
-            shipment.name = f"{order.name}-{number}"
+            shipment.name = f"{REFERENCE_PREFIX}{order.name}-{number}"
         shipments.filtered(lambda s: s._sharing_enabled())._send()
         return shipments
 

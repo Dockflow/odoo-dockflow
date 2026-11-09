@@ -15,7 +15,7 @@
                             ports, ETD/ETA, ATD/ATA and milestones back. No other data is sent.
                         </div>
                     </setting>
-                    <setting id="dockflow_connection" string="Dockflow connection" help="Create a dedicated API token for Odoo in the Dockflow API Console, with the downstream and upstream scopes and 'own tradeflows only'.">
+                    <setting id="dockflow_connection" string="Dockflow connection" help="Create a dedicated API token for Odoo in the Dockflow API Console, with the downstream and upstream scopes. Tick 'Only include tradeflows your company created' to keep partner-shared tradeflows out.">
                         <div class="content-group">
                             <div class="row mt8">
                                 <label for="dockflow_token" class="col-lg-4 o_light_label"/>

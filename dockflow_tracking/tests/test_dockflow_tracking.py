@@ -42,14 +42,14 @@ class TestDockflowTracking(TransactionCase):
             shipment = self._shipment()
         send.assert_not_called()
         self.assertEqual(shipment.state, "draft")
-        self.assertEqual(shipment.name, self.order.name + "-1")
+        self.assertEqual(shipment.name, "ODOO-" + self.order.name + "-1")
 
     def test_opt_in_sends_and_numbers_per_order(self):
         self.params.set_bool("dockflow_tracking.opt_in", True)
         with patch(CLIENT + ".send_tradeflows") as send:
             first = self._shipment()
             second = self._shipment("MEDU7654321")
-        self.assertEqual(second.name, self.order.name + "-2")
+        self.assertEqual(second.name, "ODOO-" + self.order.name + "-2")
         self.assertEqual((first.state, second.state), ("sent", "sent"))
         payload = send.call_args_list[0].args[0][0]
         self.assertEqual(payload["tradeflow_reference"], first.name)
