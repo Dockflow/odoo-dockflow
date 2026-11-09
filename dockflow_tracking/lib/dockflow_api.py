@@ -75,27 +75,25 @@ class DockflowClient:
         if response.status_code not in (200, 202, 204, 404):
             raise DockflowApiError(_describe(response), response.status_code)
 
-    def poll_updates(self, since=None, per_page=1000):
-        """All records waiting for this key, using failsafe polling.
+    def iter_pages(self, since=None, per_page=1000):
+        """Pages of records waiting for this key, using failsafe polling.
 
-        Dockflow keeps the position per key, so a page lost in transit is sent
-        again on the next call. `since` only seeds the very first call.
+        Dockflow moves the position on with every call, so the caller must store a
+        page before asking for the next one. `since` only seeds the very first call.
         """
         params = {"failsafe": 1, "per_page": per_page}
         if since:
             params["since"] = since
-        records = []
         for _page in range(MAX_PAGES):
             response = self._request("GET", "/upstream", params=dict(params))
             if response.status_code != 200:
                 raise DockflowApiError(_describe(response), response.status_code)
             body = response.json()
-            records.extend(body.get("data") or [])
+            yield body.get("data") or []
             cursor = body.get("next_cursor")
             if not cursor:
-                break
+                return
             params["cursor"] = cursor
-        return records
 
 
 def _describe(response):

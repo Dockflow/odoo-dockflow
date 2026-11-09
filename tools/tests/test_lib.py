@@ -71,12 +71,36 @@ def test_split_shipment_voyage_from_first_split_and_containers_from_all():
     assert len(events) == 9
 
 
+def test_split_eta_is_the_latest_arrival():
+    first = copy.deepcopy(FIXTURE["data"][0])
+    second = copy.deepcopy(first)
+    second["shipment"]["split_shipment_number"] = 2
+    second["shipment"]["arrival_event_date"] = "2026-12-20T10:00:00+00:00"
+    values, _containers, _events = mapping.shipment_values([first, second])
+    assert values["eta"] == datetime(2026, 12, 20, 10, 0)
+
+
+def test_group_keeps_the_newest_version_of_each_split():
+    old = copy.deepcopy(FIXTURE["data"][0])
+    new = copy.deepcopy(old)
+    new["metadata"]["last_updated"] = "2026-11-10T00:00:00+00:00"
+    new["shipment"]["arrival_event_date"] = "2026-12-24T00:00:00+00:00"
+    grouped = mapping.group_by_tradeflow([new, old])
+    (records,) = grouped.values()
+    assert len(records) == 1
+    assert records[0]["shipment"]["arrival_event_date"] == "2026-12-24T00:00:00+00:00"
+
+
 def test_downstream_payload_without_and_with_mock():
     plain = mapping.downstream_payload("P00012-1", "bill_of_lading", " MEDU123 ", "P00012")
     assert plain == {
         "tradeflow_reference": "P00012-1",
         "bill_of_lading_reference": ["MEDU123"],
         "bill_of_lading_references_complete": True,
+        "booking_reference": [],
+        "booking_references_complete": True,
+        "container_reference": [],
+        "container_references_complete": True,
         "custom_references": {"odoo_purchase_order": "P00012"},
         "active": True,
     }
@@ -121,12 +145,24 @@ def test_check_connection_does_not_use_failsafe():
         refused.check_connection()
 
 
-def test_poll_follows_cursor_until_null():
+def test_pages_follow_cursor_until_null():
     session = FakeSession([
         FakeResponse(200, {"data": [{"tradeflow_reference": "a"}], "next_cursor": "c1"}),
         FakeResponse(200, {"data": [{"tradeflow_reference": "b"}], "next_cursor": None}),
     ])
-    records = dockflow_api.DockflowClient(UAT_TOKEN, "uat", session=session).poll_updates(since="2026-11-01T00:00:00Z")
-    assert [r["tradeflow_reference"] for r in records] == ["a", "b"]
+    pages = list(dockflow_api.DockflowClient(UAT_TOKEN, "uat", session=session).iter_pages(since="2026-11-01T00:00:00Z"))
+    assert [[r["tradeflow_reference"] for r in page] for page in pages] == [["a"], ["b"]]
     assert session.calls[0][2]["params"] == {"failsafe": 1, "per_page": 1000, "since": "2026-11-01T00:00:00Z"}
     assert session.calls[1][2]["params"]["cursor"] == "c1"
+
+
+def test_pages_are_handed_out_before_a_later_page_fails():
+    session = FakeSession([
+        FakeResponse(200, {"data": [{"tradeflow_reference": "a"}], "next_cursor": "c1"}),
+        FakeResponse(503, text="busy"),
+    ])
+    received = []
+    with pytest.raises(dockflow_api.DockflowApiError, match="HTTP 503"):
+        for page in dockflow_api.DockflowClient(UAT_TOKEN, "uat", session=session).iter_pages():
+            received.append(page)
+    assert received == [[{"tradeflow_reference": "a"}]]

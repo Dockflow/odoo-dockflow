@@ -35,13 +35,12 @@ def parse_datetime(value):
 
 
 def downstream_payload(tradeflow_reference, reference_type, reference, order_name, mock_scenario=None):
-    payload = {
-        "tradeflow_reference": tradeflow_reference,
-        REFERENCE_FIELDS[reference_type]: [reference.strip()],
-        COMPLETE_FLAGS[reference_type]: True,
-        "custom_references": {"odoo_purchase_order": order_name},
-        "active": True,
-    }
+    payload = {"tradeflow_reference": tradeflow_reference}
+    for kind, field in REFERENCE_FIELDS.items():
+        payload[field] = [reference.strip()] if kind == reference_type else []
+        payload[COMPLETE_FLAGS[kind]] = True
+    payload["custom_references"] = {"odoo_purchase_order": order_name}
+    payload["active"] = True
     if mock_scenario:
         payload["mock_tracking"] = {"scenario": mock_scenario}
         payload["port_of_loading"], payload["port_of_discharge"] = MOCK_PORTS
@@ -49,12 +48,19 @@ def downstream_payload(tradeflow_reference, reference_type, reference, order_nam
 
 
 def group_by_tradeflow(records):
-    """Records per tradeflow reference. A split shipment yields several records."""
-    grouped = {}
+    """Records per tradeflow reference, one per split, keeping the newest version of each."""
+    newest = {}
     for record in records:
         reference = record.get("tradeflow_reference")
-        if reference:
-            grouped.setdefault(reference, []).append(record)
+        if not reference:
+            continue
+        key = (reference, _split_number(record))
+        stamp = (record.get("metadata") or {}).get("last_updated") or ""
+        if key not in newest or stamp > ((newest[key].get("metadata") or {}).get("last_updated") or ""):
+            newest[key] = record
+    grouped = {}
+    for (reference, _split), record in newest.items():
+        grouped.setdefault(reference, []).append(record)
     return grouped
 
 
@@ -72,10 +78,13 @@ def shipment_values(records):
     shipment = main.get("shipment") or {}
     metadata = main.get("metadata") or {}
     vessel = (shipment.get("current_vessel") or {}).get("name")
+    # The PO waits for the last split, so the latest arrival is the one that counts.
+    arrivals = [d for d in (parse_datetime((r.get("shipment") or {}).get("arrival_event_date")) for r in records) if d]
+    stamps = [d for d in (parse_datetime((r.get("metadata") or {}).get("last_updated")) for r in records) if d]
     values = {
         "carrier_name": metadata.get("carrier_name") or False,
         "is_active": bool(metadata.get("is_active", True)),
-        "last_updated": parse_datetime(metadata.get("last_updated")),
+        "last_updated": max(stamps) if stamps else None,
         "bill_of_lading": main.get("bill_of_lading") or False,
         "booking": main.get("booking") or False,
         "port_of_loading": shipment.get("port_of_loading") or False,
@@ -83,8 +92,8 @@ def shipment_values(records):
         "transshipment_ports": ", ".join(shipment.get("transshipment_ports") or []) or False,
         "etd": parse_datetime(shipment.get("departure_event_date")),
         "etd_is_actual": bool(shipment.get("departure_is_actual")),
-        "eta": parse_datetime(shipment.get("arrival_event_date")),
-        "eta_is_actual": bool(shipment.get("arrival_is_actual")),
+        "eta": max(arrivals) if arrivals else None,
+        "eta_is_actual": all(bool((r.get("shipment") or {}).get("arrival_is_actual")) for r in records),
         "vessel": vessel if vessel and vessel != PLACEHOLDER_VESSEL else False,
     }
     containers, events, seen = [], [], set()

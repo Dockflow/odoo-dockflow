@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from odoo.addons.dockflow_tracking.lib.dockflow_api import DockflowApiError
 from odoo.tests import TransactionCase, tagged
 
 CLIENT = "odoo.addons.dockflow_tracking.lib.dockflow_api.DockflowClient"
@@ -59,7 +60,6 @@ class TestDockflowTracking(TransactionCase):
 
     def test_refused_send_is_shown_on_the_shipment(self):
         self.params.set_bool("dockflow_tracking.opt_in", True)
-        from odoo.addons.dockflow_tracking.lib.dockflow_api import DockflowApiError
         with patch(CLIENT + ".send_tradeflows", side_effect=DockflowApiError("Dockflow answered HTTP 422: bad", 422)):
             shipment = self._shipment()
         self.assertEqual(shipment.state, "error")
@@ -70,7 +70,7 @@ class TestDockflowTracking(TransactionCase):
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
         unrelated = self._record("SOMEONE-ELSE")
-        with patch(CLIENT + ".poll_updates", return_value=[self._record(shipment.name), unrelated]):
+        with patch(CLIENT + ".iter_pages", return_value=iter([[self._record(shipment.name), unrelated]])):
             self.env["dockflow.shipment"]._cron_sync()
         self.assertEqual(shipment.state, "tracking")
         self.assertEqual(shipment.eta, datetime(2026, 12, 9, 19, 4, 36))
@@ -82,14 +82,14 @@ class TestDockflowTracking(TransactionCase):
         later = self._record(shipment.name, arrival_event_date="2026-12-12T19:04:36+00:00")
         later["metadata"]["last_updated"] = "2026-11-10T08:00:00+00:00"
         messages_before = len(self.order.message_ids)
-        with patch(CLIENT + ".poll_updates", return_value=[later]):
+        with patch(CLIENT + ".iter_pages", return_value=iter([[later]])):
             self.env["dockflow.shipment"]._cron_sync()
         self.assertEqual(shipment.eta, datetime(2026, 12, 12, 19, 4, 36))
         self.assertEqual(len(self.order.message_ids), messages_before + 1)
         self.assertIn("moved from", self.order.message_ids[0].body)
 
         stale = self._record(shipment.name, arrival_event_date="2027-01-01T00:00:00+00:00")
-        with patch(CLIENT + ".poll_updates", return_value=[stale]):
+        with patch(CLIENT + ".iter_pages", return_value=iter([[stale]])):
             self.env["dockflow.shipment"]._cron_sync()
         self.assertEqual(shipment.eta, datetime(2026, 12, 12, 19, 4, 36))
 
@@ -101,7 +101,7 @@ class TestDockflowTracking(TransactionCase):
         self.assertTrue(receipt)
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
-        with patch(CLIENT + ".poll_updates", return_value=[self._record(shipment.name)]):
+        with patch(CLIENT + ".iter_pages", return_value=iter([[self._record(shipment.name)]])):
             self.env["dockflow.shipment"]._cron_sync()
         self.assertEqual(receipt.scheduled_date, datetime(2026, 12, 9, 19, 4, 36))
 
@@ -113,3 +113,64 @@ class TestDockflowTracking(TransactionCase):
             self.order.button_cancel()
         deactivate.assert_called_once_with(shipment.name)
         self.assertEqual(shipment.state, "deactivated")
+
+    def test_numbers_are_never_reused(self):
+        first = self._shipment()
+        first.unlink()
+        self.assertEqual(self._shipment().name, "ODOO-" + self.order.name + "-2")
+
+    def test_a_page_is_kept_when_a_later_page_fails(self):
+        self.params.set_bool("dockflow_tracking.opt_in", True)
+        with patch(CLIENT + ".send_tradeflows"):
+            shipment = self._shipment()
+
+        def pages(**_kwargs):
+            yield [self._record(shipment.name)]
+            raise DockflowApiError("Dockflow answered HTTP 503: busy", 503)
+
+        with patch(CLIENT + ".iter_pages", side_effect=pages):
+            self.env["dockflow.shipment"]._cron_sync()
+        self.assertEqual(shipment.state, "tracking")
+
+    def test_deactivated_tradeflow_does_not_clear_the_receipt_date(self):
+        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_bool("dockflow_tracking.sync_receipt_date", True)
+        self.order.button_confirm()
+        receipt = self.order.picking_ids
+        with patch(CLIENT + ".send_tradeflows"):
+            shipment = self._shipment()
+        closed = self._record(shipment.name)
+        closed["metadata"]["is_active"] = False
+        with patch(CLIENT + ".iter_pages", return_value=iter([[closed]])):
+            self.env["dockflow.shipment"]._cron_sync()
+        self.assertEqual(shipment.state, "deactivated")
+        self.assertTrue(receipt.scheduled_date)
+
+    def test_cron_does_not_send_shipments_of_cancelled_orders(self):
+        shipment = self._shipment()
+        self.order.button_cancel()
+        self.params.set_bool("dockflow_tracking.opt_in", True)
+        with patch(CLIENT + ".send_tradeflows") as send, patch(CLIENT + ".iter_pages", return_value=iter([])):
+            self.env["dockflow.shipment"]._cron_sync()
+        send.assert_not_called()
+        self.assertEqual(shipment.state, "draft")
+
+    def test_cancel_survives_a_token_for_the_wrong_environment(self):
+        self.params.set_bool("dockflow_tracking.opt_in", True)
+        with patch(CLIENT + ".send_tradeflows"):
+            shipment = self._shipment()
+        self.params.set_str("dockflow_tracking.environment", "prod")
+        self.order.button_cancel()
+        self.assertEqual(self.order.state, "cancel")
+        self.assertEqual(shipment.state, "sent")
+
+    def test_a_new_token_sends_open_shipments_again(self):
+        self.params.set_bool("dockflow_tracking.opt_in", True)
+        with patch(CLIENT + ".send_tradeflows"):
+            shipment = self._shipment()
+        with patch(CLIENT + ".send_tradeflows"), patch(CLIENT + ".iter_pages", return_value=iter([])):
+            self.env["dockflow.shipment"]._cron_sync()
+        self.params.set_str("dockflow_tracking.token", "uat_other-org_" + "c" * 43)
+        with patch(CLIENT + ".send_tradeflows") as send, patch(CLIENT + ".iter_pages", return_value=iter([])):
+            self.env["dockflow.shipment"]._cron_sync()
+        self.assertEqual(send.call_args.args[0][0]["tradeflow_reference"], shipment.name)

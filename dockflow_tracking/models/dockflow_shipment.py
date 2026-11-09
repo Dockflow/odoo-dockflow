@@ -1,9 +1,11 @@
+import hashlib
 import logging
 from datetime import timedelta
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.fields import Command
+from odoo.modules import module as odoo_module
 
 from ..lib import dockflow_api, mapping
 
@@ -13,6 +15,7 @@ PARAM = "dockflow_tracking."
 ETA_SHIFT_TO_REPORT = timedelta(hours=24)
 # The token sees every tradeflow of the company, so Odoo's references must not collide with those of other systems.
 REFERENCE_PREFIX = "ODOO-"
+LIVE_STATES = ("sent", "tracking", "error")
 
 
 class DockflowShipment(models.Model):
@@ -58,23 +61,27 @@ class DockflowShipment(models.Model):
     def create(self, vals_list):
         shipments = super().create(vals_list)
         for shipment in shipments:
-            order = shipment.purchase_order_id
-            taken = set(order.dockflow_shipment_ids.mapped("name"))
-            number = 1
-            while f"{REFERENCE_PREFIX}{order.name}-{number}" in taken:
+            order = shipment.purchase_order_id.sudo()
+            # A number is never reused: Dockflow keeps a deactivated tradeflow, and reusing its name would revive it.
+            number = order.dockflow_last_number
+            while True:
                 number += 1
-            shipment.name = f"{REFERENCE_PREFIX}{order.name}-{number}"
-        shipments.filtered(lambda s: s._sharing_enabled())._send()
+                name = f"{REFERENCE_PREFIX}{order.name}-{number}"
+                if not self.sudo().search_count([("name", "=", name)]):
+                    break
+            order.dockflow_last_number = number
+            shipment.name = name
+        shipments._sendable()._send()
         return shipments
 
     def write(self, vals):
         result = super().write(vals)
         if {"reference", "reference_type"} & set(vals):
-            self.filtered(lambda s: s.state != "deactivated" and s._sharing_enabled())._send()
+            self.filtered(lambda s: s.state != "deactivated")._sendable()._send()
         return result
 
     def unlink(self):
-        self.filtered(lambda s: s.state in ("sent", "tracking", "error"))._deactivate()
+        self.filtered(lambda s: s.state in LIVE_STATES)._deactivate()
         return super().unlink()
 
     def _config(self):
@@ -90,6 +97,11 @@ class DockflowShipment(models.Model):
     def _sharing_enabled(self):
         config = self._config()
         return config["opt_in"] and bool(config["token"])
+
+    def _sendable(self):
+        if not self._sharing_enabled():
+            return self.browse()
+        return self.filtered(lambda s: s.purchase_order_id.state != "cancel")
 
     def _client(self):
         config = self._config()
@@ -114,9 +126,14 @@ class DockflowShipment(models.Model):
         self.filtered(lambda s: s.state in ("draft", "error")).write({"state": "sent", "last_error": False})
 
     def _deactivate(self):
-        if not self._sharing_enabled():
+        """Best effort: a shipment that cannot be deactivated now is retried by the cron."""
+        if not self or not self._sharing_enabled():
             return
-        client = self._client()
+        try:
+            client = self._client()
+        except dockflow_api.DockflowApiError as exc:
+            _logger.warning("Dockflow: cannot deactivate %s: %s", ", ".join(self.mapped("name")), exc)
+            return
         for shipment in self:
             try:
                 client.deactivate_tradeflow(shipment.name)
@@ -126,27 +143,49 @@ class DockflowShipment(models.Model):
             shipment.state = "deactivated"
 
     def action_send(self):
+        if self.filtered(lambda s: s.purchase_order_id.state == "cancel"):
+            raise UserError(self.env._("A shipment of a cancelled purchase order cannot be sent."))
         self._send()
+
+    def _commit(self):
+        if not odoo_module.current_test:
+            self.env.cr.commit()
 
     @api.model
     def _cron_sync(self):
         if not self._sharing_enabled():
             return
-        self.search([("state", "in", ("draft", "error"))])._send()
+        config = self._config()
+        params = self.env["ir.config_parameter"].sudo()
+        # Another token or environment is another account with its own position: start over there.
+        key = hashlib.sha256(f"{config['environment']}:{config['token']}".encode()).hexdigest()[:16]
+        previous_key = params.get_str(PARAM + "polling_key")
+        if previous_key != key:
+            if previous_key:
+                self.search([("state", "in", LIVE_STATES), ("purchase_order_id.state", "!=", "cancel")]).write(
+                    {"state": "draft"}
+                )
+                params.set_bool(PARAM + "polling_seeded", False)
+            params.set_str(PARAM + "polling_key", key)
+
+        self.search([("state", "in", ("draft", "error"))])._sendable()._send()
+        self.search([("state", "in", LIVE_STATES), ("purchase_order_id.state", "=", "cancel")])._deactivate()
+        self._commit()
+
         open_shipments = self.search([("state", "in", ("sent", "tracking"))])
         if not open_shipments:
             return
-        params = self.env["ir.config_parameter"].sudo()
         since = None
         if not params.get_bool(PARAM + "polling_seeded"):
             since = (min(open_shipments.mapped("create_date")) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
-            records = self._client().poll_updates(since=since)
+            # Dockflow moves its position on with every page, so each page is stored before the next is asked for.
+            for page in self._client().iter_pages(since=since):
+                self._apply_records(page)
+                params.set_bool(PARAM + "polling_seeded", True)
+                self._commit()
         except dockflow_api.DockflowApiError as exc:
             _logger.warning("Dockflow: polling failed: %s", exc)
-            return
-        params.set_bool(PARAM + "polling_seeded", True)
-        self._apply_records(records)
 
     @api.model
     def _apply_records(self, records):
@@ -155,26 +194,32 @@ class DockflowShipment(models.Model):
             return
         sync_receipt_date = self._config()["sync_receipt_date"]
         for shipment in self.search([("name", "in", list(grouped)), ("state", "!=", "deactivated")]):
-            values, containers, events = mapping.shipment_values(grouped[shipment.name])
-            if shipment.last_updated and values["last_updated"] and values["last_updated"] < shipment.last_updated:
-                continue
-            previous_eta = shipment.eta
-            values["state"] = "tracking" if values.pop("is_active") else "deactivated"
-            values["container_ids"] = [Command.clear()] + [Command.create(c) for c in containers]
-            values["event_ids"] = [Command.clear()] + [Command.create(e) for e in events]
-            shipment.write(values)
-            order = shipment.purchase_order_id
-            if previous_eta and shipment.eta and abs(shipment.eta - previous_eta) > ETA_SHIFT_TO_REPORT:
-                order.message_post(body=self.env._(
-                    "Dockflow: the ETA of %(shipment)s (%(reference)s) moved from %(old)s to %(new)s (UTC).",
-                    shipment=shipment.name, reference=shipment.reference,
-                    old=fields.Datetime.to_string(previous_eta), new=fields.Datetime.to_string(shipment.eta),
-                ))
-            if sync_receipt_date and shipment.eta:
-                receipts = order.picking_ids.filtered(
-                    lambda p: p.picking_type_code == "incoming" and p.state not in ("done", "cancel")
-                )
-                receipts.write({"scheduled_date": order.dockflow_eta})
+            try:
+                with self.env.cr.savepoint():
+                    shipment._apply(grouped[shipment.name], sync_receipt_date)
+            except Exception:
+                _logger.exception("Dockflow: could not apply the update for %s", shipment.name)
+
+    def _apply(self, records, sync_receipt_date):
+        values, containers, events = mapping.shipment_values(records)
+        if self.last_updated and values["last_updated"] and values["last_updated"] < self.last_updated:
+            return
+        previous_eta = self.eta
+        values["state"] = "tracking" if values.pop("is_active") else "deactivated"
+        values["container_ids"] = [Command.clear()] + [Command.create(c) for c in containers]
+        values["event_ids"] = [Command.clear()] + [Command.create(e) for e in events]
+        self.write(values)
+        order = self.purchase_order_id
+        if previous_eta and self.eta and abs(self.eta - previous_eta) > ETA_SHIFT_TO_REPORT:
+            order.message_post(body=self.env._(
+                "Dockflow: the ETA of %(shipment)s (%(reference)s) moved from %(old)s to %(new)s (UTC).",
+                shipment=self.name, reference=self.reference,
+                old=fields.Datetime.to_string(previous_eta), new=fields.Datetime.to_string(self.eta),
+            ))
+        if sync_receipt_date and order.dockflow_eta:
+            order.picking_ids.filtered(
+                lambda p: p.picking_type_code == "incoming" and p.state not in ("done", "cancel")
+            ).write({"scheduled_date": order.dockflow_eta})
 
 
 class DockflowContainer(models.Model):
