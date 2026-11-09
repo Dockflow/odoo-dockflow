@@ -1,0 +1,66 @@
+<section class="container">
+    <div class="row">
+        <div class="col-md-12 text-center" style="padding-top: 24px; padding-bottom: 8px;">
+            <h2 style="color: #0b1f44; font-weight: 700;">Container tracking on your purchase orders</h2>
+            <p style="font-size: 18px; color: #33476b; margin-top: 12px;">
+                Add a bill of lading, booking or container number to a purchase order.
+                The ETA, ports and milestones appear on the order and update by themselves.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="container">
+    <div class="row">
+        <div class="col-md-6" style="padding-top: 16px;">
+            <h3 style="color: #0b1f44;">What you get</h3>
+            <ul style="font-size: 16px; color: #33476b;">
+                <li>ETA column in the purchase order list</li>
+                <li>Shipments tab and button on the purchase order, with port of loading, port of discharge, ETD and ETA</li>
+                <li>Milestones per container, marked actual or planned</li>
+                <li>A note in the chatter when the ETA moves by more than 24 hours</li>
+                <li>Optional: the scheduled date of the incoming receipt follows the ETA</li>
+                <li>Cancelling the purchase order stops the tracking</li>
+            </ul>
+        </div>
+        <div class="col-md-6" style="padding-top: 16px;">
+            <h3 style="color: #0b1f44;">Requirements</h3>
+            <p style="font-size: 16px; color: #33476b;">
+                A Dockflow account and a Dockflow API token with the downstream and upstream scopes.
+                To request an account, mail <a href="mailto:support@dockflow.com">support@dockflow.com</a>.
+            </p>
+            <h3 style="color: #0b1f44; margin-top: 24px;">Data shared</h3>
+            <p style="font-size: 16px; color: #33476b;">
+                Nothing is sent until you switch on "Share shipment references with Dockflow" in the Purchase settings.
+                After that, the module sends the bill of lading, booking or container numbers you enter on purchase orders,
+                and the purchase order reference, to the Dockflow API. It receives status, ports, ETD/ETA, ATD/ATA and
+                milestones back. No other data leaves your database.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="container" style="padding-top: 24px;">
+    <h3 style="color: #0b1f44;">Purchase order list with ETA</h3>
+    <img class="img-fluid" src="po_list_screenshot.png" alt="Purchase order list with ETA column" style="border: 1px solid #d8e0ec; margin-bottom: 32px;"/>
+
+    <h3 style="color: #0b1f44;">Shipments on the purchase order</h3>
+    <img class="img-fluid" src="po_shipments.png" alt="Shipments tab on a purchase order" style="border: 1px solid #d8e0ec; margin-bottom: 32px;"/>
+
+    <h3 style="color: #0b1f44;">Shipment with milestones</h3>
+    <img class="img-fluid" src="shipment.png" alt="Shipment with ports, ETD, ETA and milestones" style="border: 1px solid #d8e0ec; margin-bottom: 32px;"/>
+
+    <h3 style="color: #0b1f44;">Settings</h3>
+    <img class="img-fluid" src="settings.png" alt="Dockflow settings in the Purchase settings" style="border: 1px solid #d8e0ec; margin-bottom: 32px;"/>
+</section>
+
+<section class="container" style="padding-bottom: 32px;">
+    <h3 style="color: #0b1f44;">Setup</h3>
+    <ol style="font-size: 16px; color: #33476b;">
+        <li>Create a dedicated API token for Odoo in the Dockflow API Console, with the downstream and upstream scopes. Ticking "Only include tradeflows your company created" keeps tradeflows shared by partners out of Odoo.</li>
+        <li>In Purchase settings, under Dockflow tracking, paste the token, choose the environment and click "Check connection".</li>
+        <li>Switch on "Share shipment references with Dockflow".</li>
+        <li>Open a purchase order, go to the Shipments tab and add a bill of lading, booking or container number.</li>
+    </ol>
+    <p style="font-size: 16px; color: #33476b;">Tracking updates arrive every 15 minutes.</p>
+</section>
