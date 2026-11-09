@@ -51,6 +51,7 @@ def test_shipment_values_from_uat_fixture():
     assert values["etd_is_actual"] is True
     assert values["eta"] == datetime(2026, 12, 9, 19, 4, 36)
     assert values["eta_is_actual"] is False
+    assert values["vessel"] is False
     assert [c["reference"] for c in containers] == ["MSCU1234565"]
     assert containers[0]["latest_milestone"] == "VD"
     assert [e["code"] for e in events] == ["GE", "GN", "AE", "VD", "VA", "UV", "GT", "GR"]

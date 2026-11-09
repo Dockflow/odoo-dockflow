@@ -18,6 +18,9 @@ COMPLETE_FLAGS = {
     "container": "container_references_complete",
 }
 
+# Dockflow's name for a leg whose vessel is not known yet.
+PLACEHOLDER_VESSEL = "Unknown vessel"
+
 # The ports a UAT mock journey needs. Only used when a test scenario is set.
 MOCK_PORTS = ("BEANR", "USLAX")
 
@@ -68,6 +71,7 @@ def shipment_values(records):
     main = records[0]
     shipment = main.get("shipment") or {}
     metadata = main.get("metadata") or {}
+    vessel = (shipment.get("current_vessel") or {}).get("name")
     values = {
         "carrier_name": metadata.get("carrier_name") or False,
         "is_active": bool(metadata.get("is_active", True)),
@@ -81,7 +85,7 @@ def shipment_values(records):
         "etd_is_actual": bool(shipment.get("departure_is_actual")),
         "eta": parse_datetime(shipment.get("arrival_event_date")),
         "eta_is_actual": bool(shipment.get("arrival_is_actual")),
-        "vessel": (shipment.get("current_vessel") or {}).get("name") or False,
+        "vessel": vessel if vessel and vessel != PLACEHOLDER_VESSEL else False,
     }
     containers, events, seen = [], [], set()
     for record in records:

@@ -15,7 +15,7 @@
                             ports, ETD/ETA, ATD/ATA and milestones back. No other data is sent.
                         </div>
                     </setting>
-                    <setting id="dockflow_connection" help="Create a dedicated API token for Odoo in the Dockflow API Console, with the downstream and upstream scopes and 'own tradeflows only'.">
+                    <setting id="dockflow_connection" string="Dockflow connection" help="Create a dedicated API token for Odoo in the Dockflow API Console, with the downstream and upstream scopes and 'own tradeflows only'.">
                         <div class="content-group">
                             <div class="row mt8">
                                 <label for="dockflow_token" class="col-lg-4 o_light_label"/>
@@ -29,7 +29,7 @@
                                 <label for="dockflow_mock_scenario" class="col-lg-4 o_light_label"/>
                                 <field name="dockflow_mock_scenario" placeholder="ocean_basic"/>
                             </div>
-                            <button name="action_dockflow_check_connection" type="object" string="Check connection" class="btn-link mt8" icon="oi-arrow-right"/>
+                            <button name="action_dockflow_check_connection" type="object" string="Check connection" class="btn-link mt8 px-0"/>
                         </div>
                     </setting>
                     <setting id="dockflow_sync_receipt_date" help="Set the scheduled date of open receipts to the ETA from Dockflow.">
