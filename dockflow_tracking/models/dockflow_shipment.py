@@ -87,11 +87,11 @@ class DockflowShipment(models.Model):
     def _config(self):
         params = self.env["ir.config_parameter"].sudo()
         return {
-            "opt_in": params.get_bool(PARAM + "opt_in"),
-            "token": params.get_str(PARAM + "token"),
-            "environment": params.get_str(PARAM + "environment") or "prod",
-            "sync_receipt_date": params.get_bool(PARAM + "sync_receipt_date"),
-            "mock_scenario": params.get_str(PARAM + "mock_scenario") or False,
+            "opt_in": params.get_param(PARAM + "opt_in") == "True",
+            "token": params.get_param(PARAM + "token") or "",
+            "environment": params.get_param(PARAM + "environment") or "prod",
+            "sync_receipt_date": params.get_param(PARAM + "sync_receipt_date") == "True",
+            "mock_scenario": params.get_param(PARAM + "mock_scenario") or False,
         }
 
     def _sharing_enabled(self):
@@ -159,14 +159,14 @@ class DockflowShipment(models.Model):
         params = self.env["ir.config_parameter"].sudo()
         # Another token or environment is another account with its own position: start over there.
         key = hashlib.sha256(f"{config['environment']}:{config['token']}".encode()).hexdigest()[:16]
-        previous_key = params.get_str(PARAM + "polling_key")
+        previous_key = params.get_param(PARAM + "polling_key")
         if previous_key != key:
             if previous_key:
                 self.search([("state", "in", LIVE_STATES), ("purchase_order_id.state", "!=", "cancel")]).write(
                     {"state": "draft"}
                 )
-                params.set_bool(PARAM + "polling_seeded", False)
-            params.set_str(PARAM + "polling_key", key)
+                params.set_param(PARAM + "polling_seeded", "False")
+            params.set_param(PARAM + "polling_key", key)
 
         self.search([("state", "in", ("draft", "error"))])._sendable()._send()
         self.search([("state", "in", LIVE_STATES), ("purchase_order_id.state", "=", "cancel")])._deactivate()
@@ -176,13 +176,13 @@ class DockflowShipment(models.Model):
         if not open_shipments:
             return
         since = None
-        if not params.get_bool(PARAM + "polling_seeded"):
+        if params.get_param(PARAM + "polling_seeded") != "True":
             since = (min(open_shipments.mapped("create_date")) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             # Dockflow moves its position on with every page, so each page is stored before the next is asked for.
             for page in self._client().iter_pages(since=since):
                 self._apply_records(page)
-                params.set_bool(PARAM + "polling_seeded", True)
+                params.set_param(PARAM + "polling_seeded", "True")
                 self._commit()
         except dockflow_api.DockflowApiError as exc:
             _logger.warning("Dockflow: polling failed: %s", exc)

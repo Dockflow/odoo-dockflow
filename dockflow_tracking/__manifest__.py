@@ -1,6 +1,6 @@
 {
     "name": "Ocean Container Tracking",
-    "version": "20.0.1.0.0",
+    "version": "18.0.1.0.0",
     "summary": "Track containers, bills of lading and bookings on purchase orders, with ETA and milestones from Dockflow",
     "description": """
 Requires a Dockflow account (dockflow.com). After you opt in, the module sends
@@ -13,7 +13,8 @@ ports, ETD/ETA, ATD/ATA and milestones back. No other data is sent.
     "category": "Inventory/Purchase",
     "depends": ["purchase_stock"],
     "data": [
-        "security/ir.access.csv",
+        "security/ir.model.access.csv",
+        "security/dockflow_security.xml",
         "data/ir_cron.xml",
         "views/dockflow_shipment_views.xml",
         "views/purchase_order_views.xml",

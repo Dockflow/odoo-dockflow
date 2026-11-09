@@ -24,8 +24,8 @@ class TestDockflowTracking(TransactionCase):
             "order_line": [(0, 0, {"product_id": cls.product.id, "product_qty": 1, "price_unit": 10})],
         })
         cls.params = cls.env["ir.config_parameter"].sudo()
-        cls.params.set_str("dockflow_tracking.token", TOKEN)
-        cls.params.set_str("dockflow_tracking.environment", "uat")
+        cls.params.set_param("dockflow_tracking.token", TOKEN)
+        cls.params.set_param("dockflow_tracking.environment", "uat")
 
     def _record(self, reference, **shipment):
         record = copy.deepcopy(FIXTURE["data"][0])
@@ -46,7 +46,7 @@ class TestDockflowTracking(TransactionCase):
         self.assertEqual(shipment.name, "ODOO-" + self.order.name + "-1")
 
     def test_opt_in_sends_and_numbers_per_order(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows") as send:
             first = self._shipment()
             second = self._shipment("MEDU7654321")
@@ -59,14 +59,14 @@ class TestDockflowTracking(TransactionCase):
         self.assertNotIn("mock_tracking", payload)
 
     def test_refused_send_is_shown_on_the_shipment(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows", side_effect=DockflowApiError("Dockflow answered HTTP 422: bad", 422)):
             shipment = self._shipment()
         self.assertEqual(shipment.state, "error")
         self.assertIn("HTTP 422", shipment.last_error)
 
     def test_poll_applies_record_and_reports_eta_shift(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
         unrelated = self._record("SOMEONE-ELSE")
@@ -94,8 +94,8 @@ class TestDockflowTracking(TransactionCase):
         self.assertEqual(shipment.eta, datetime(2026, 12, 12, 19, 4, 36))
 
     def test_receipt_date_follows_eta_when_enabled(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
-        self.params.set_bool("dockflow_tracking.sync_receipt_date", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
+        self.params.set_param("dockflow_tracking.sync_receipt_date", "True")
         self.order.button_confirm()
         receipt = self.order.picking_ids
         self.assertTrue(receipt)
@@ -106,7 +106,7 @@ class TestDockflowTracking(TransactionCase):
         self.assertEqual(receipt.scheduled_date, datetime(2026, 12, 9, 19, 4, 36))
 
     def test_cancel_deactivates_on_dockflow(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
         with patch(CLIENT + ".deactivate_tradeflow") as deactivate:
@@ -120,7 +120,7 @@ class TestDockflowTracking(TransactionCase):
         self.assertEqual(self._shipment().name, "ODOO-" + self.order.name + "-2")
 
     def test_a_page_is_kept_when_a_later_page_fails(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
 
@@ -133,8 +133,8 @@ class TestDockflowTracking(TransactionCase):
         self.assertEqual(shipment.state, "tracking")
 
     def test_deactivated_tradeflow_does_not_clear_the_receipt_date(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
-        self.params.set_bool("dockflow_tracking.sync_receipt_date", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
+        self.params.set_param("dockflow_tracking.sync_receipt_date", "True")
         self.order.button_confirm()
         receipt = self.order.picking_ids
         with patch(CLIENT + ".send_tradeflows"):
@@ -149,28 +149,28 @@ class TestDockflowTracking(TransactionCase):
     def test_cron_does_not_send_shipments_of_cancelled_orders(self):
         shipment = self._shipment()
         self.order.button_cancel()
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows") as send, patch(CLIENT + ".iter_pages", return_value=iter([])):
             self.env["dockflow.shipment"]._cron_sync()
         send.assert_not_called()
         self.assertEqual(shipment.state, "draft")
 
     def test_cancel_survives_a_token_for_the_wrong_environment(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
-        self.params.set_str("dockflow_tracking.environment", "prod")
+        self.params.set_param("dockflow_tracking.environment", "prod")
         self.order.button_cancel()
         self.assertEqual(self.order.state, "cancel")
         self.assertEqual(shipment.state, "sent")
 
     def test_a_new_token_sends_open_shipments_again(self):
-        self.params.set_bool("dockflow_tracking.opt_in", True)
+        self.params.set_param("dockflow_tracking.opt_in", "True")
         with patch(CLIENT + ".send_tradeflows"):
             shipment = self._shipment()
         with patch(CLIENT + ".send_tradeflows"), patch(CLIENT + ".iter_pages", return_value=iter([])):
             self.env["dockflow.shipment"]._cron_sync()
-        self.params.set_str("dockflow_tracking.token", "uat_other-org_" + "c" * 43)
+        self.params.set_param("dockflow_tracking.token", "uat_other-org_" + "c" * 43)
         with patch(CLIENT + ".send_tradeflows") as send, patch(CLIENT + ".iter_pages", return_value=iter([])):
             self.env["dockflow.shipment"]._cron_sync()
         self.assertEqual(send.call_args.args[0][0]["tradeflow_reference"], shipment.name)
