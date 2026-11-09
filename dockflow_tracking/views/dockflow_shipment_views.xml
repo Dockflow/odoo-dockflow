@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="dockflow_shipment_view_list" model="ir.ui.view">
+        <field name="name">dockflow.shipment.list</field>
+        <field name="model">dockflow.shipment</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="purchase_order_id"/>
+                <field name="reference_type"/>
+                <field name="reference"/>
+                <field name="port_of_loading"/>
+                <field name="port_of_discharge"/>
+                <field name="etd"/>
+                <field name="eta"/>
+                <field name="state" widget="badge" decoration-success="state == 'tracking'" decoration-danger="state == 'error'" decoration-muted="state == 'deactivated'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="dockflow_shipment_view_form" model="ir.ui.view">
+        <field name="name">dockflow.shipment.form</field>
+        <field name="model">dockflow.shipment</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_send" type="object" string="Send to Dockflow" class="btn-primary" invisible="state not in ('draft', 'error')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,sent,tracking"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Assigned on save"/></h1>
+                    </div>
+                    <div class="alert alert-danger" role="alert" invisible="state != 'error'">
+                        <field name="last_error"/>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="purchase_order_id"/>
+                            <field name="reference_type"/>
+                            <field name="reference"/>
+                            <field name="carrier_name"/>
+                            <field name="vessel"/>
+                        </group>
+                        <group>
+                            <field name="port_of_loading"/>
+                            <field name="etd"/>
+                            <field name="etd_is_actual"/>
+                            <field name="port_of_discharge"/>
+                            <field name="eta"/>
+                            <field name="eta_is_actual"/>
+                            <field name="transshipment_ports"/>
+                            <field name="last_updated"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Milestones" name="events">
+                            <field name="event_ids">
+                                <list>
+                                    <field name="event_date"/>
+                                    <field name="message"/>
+                                    <field name="location"/>
+                                    <field name="container_reference"/>
+                                    <field name="is_actual"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Containers" name="containers">
+                            <field name="container_ids">
+                                <list>
+                                    <field name="reference"/>
+                                    <field name="iso_type"/>
+                                    <field name="eta"/>
+                                    <field name="eta_is_actual"/>
+                                    <field name="latest_milestone"/>
+                                    <field name="latest_milestone_date"/>
+                                    <field name="latest_milestone_location"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>
